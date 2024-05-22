@@ -27,9 +27,9 @@ spark.conf.set('spark.sql.adaptive.coalescePartitions.enabled','false')
 # spark.conf.set('spark.sql.adaptive.enabled','true')
 
 # facttable
-# my_conn_options = {"url": "redshift-cluster-1.cnuu7fxh4kr4.us-west-1.redshift.amazonaws.com:5439/dev", 
-# "user": "awsuser",
-# "password": "Awsuser12345",
+# my_conn_options = {"url": "redshift-cluster-1.*****.redshift.amazonaws.com:5439/dbName", 
+# "user": "userName",
+# "password": "****",
 # "dbtable": "facttable_partitioned",
 # "redshiftTmpDir": "s3://aws-glue-assets-079448565720-us-west-1/connectionTempDir/"
 
