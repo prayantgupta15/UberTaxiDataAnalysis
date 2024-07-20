@@ -19,7 +19,9 @@ glueContext = GlueContext(sc)
 spark = glueContext.spark_session
 job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
-path = "s3://aws-glue-assets-079448565720-us-west-1/UberData-parquet/*.parquet"
+path = "s3://aws-glue-assets-079448565720-us-west-1/UberData/*.csv"
+# path = "s3://aws-glue-assets-079448565720-us-west-1/UberData/UberData-2024-5-5-0-*.csv"
+
 
 
 # spark = SparkSession.builder.master("local[5]") \
@@ -41,31 +43,8 @@ redshift_tmp_dir = "s3://aws-glue-assets-079448565720-us-west-1/connectionTempDi
     )
 
 print('Uber:')
-# df = spark.read.format('parquet').load(path)
+df = spark.read.format('csv').option('header',True).load(path)
 # inferSchema=False to avoid one more pass over data(10L records) to get the schema
-
-parquet_path = "s3://aws-glue-assets-079448565720-us-west-1/UberData-parquet/"
-# csv_path = "s3://aws-glue-assets-079448565720-us-west-1/UberData/"
-
-parquet_dyf = glueContext.create_dynamic_frame_from_options(
-    connection_type = "s3",
-    connection_options = {"paths":[parquet_path]
-    # ,'recurse':True, 
-    # 'groupFiles': 'inPartition'
-        # , 'groupSize': '63333990'
-        
-    },
-    format = "parquet",
-     format_options={
-        # "withHeader": True,
-        # "optimizePerformance": True,
-    },
-    # ,transformation_ctx="parquet_dyf"
-    )
-
-# print(parquet_dyf.count())
-df = parquet_dyf.toDF()
-# print(df.count())
 # ===============================================================
 # Original DF
 print('Original DF:')
@@ -94,7 +73,7 @@ df = df.withColumn('trip_id',monotonically_increasing_id()+1)\
 
 
 df.printSchema()
-# df.show(2,False)
+df.show(2,False)
 
 # rate_code_dyf = DynamicFrame.fromDF(df,glueContext,rate_code_dyf),
 
@@ -104,26 +83,23 @@ df.printSchema()
 # Fact table DF
 # ===============================================================
 print('FactTable DF:')
-fact_table_df = df.select(
-    'trip_id',
-'VendorID','passenger_count','tpep_pickup_datetime','tpep_dropoff_datetime','trip_distance',
+fact_table_df = df.select('trip_id','VendorID','passenger_count','tpep_pickup_datetime','tpep_dropoff_datetime','trip_distance',
                           'RatecodeID',
                           "payment_type",
                           'fare_amount','extra',
                           'mta_tax','tip_amount','tolls_amount','improvement_surcharge','total_amount',
                           'pickup_location_id','dropff_location_id'                         
                           )
-# # fact_table_df.show(2,False)
+# fact_table_df.show(2,False)
 fact_table_df.printSchema()
 fact_table_dyf = DynamicFrame.fromDF(fact_table_df,glueContext,"fact_table_dyf")
-# fact_table_dyf.show()
-writeToRedshift(fact_table_dyf,"FactTable_parq")
+writeToRedshift(fact_table_dyf,"FactTable")
 
 # fact_table_df.createOrReplaceTempView('fact_table_df')
 # ===============================================================
 
-# # dim tables
-# # ===============================================================
+# dim tables
+# ===============================================================
 print('PaymentType DF:')
 payment_data = [
 [1, "Credit card"],
@@ -143,27 +119,30 @@ mySchema = StructType(
 payment_data_df = spark.createDataFrame(payment_data,mySchema)
 payment_data_df.printSchema()
 payment_data_dyf = DynamicFrame.fromDF(payment_data_df,glueContext,"payment_data_dyf")
-writeToRedshift(payment_data_dyf,"PaymentTypesDim_parq")
+writeToRedshift(payment_data_dyf,"PaymentTypesDim")
 
 
 print('Pickup location DF:')
 pickup_location_df = df.select('pickup_location_id','pickup_longitude','pickup_latitude')
 pickup_location_df.printSchema()
 pickup_location_dyf = DynamicFrame.fromDF(pickup_location_df,glueContext,"pickup_location_dyf")
-writeToRedshift(pickup_location_dyf,"PickupLocationsDim_parq")
+writeToRedshift(pickup_location_dyf,"PickupLocationsDim")
 
 
 print("Drop location DF:")
 dropoff_location_df = df.select('dropff_location_id','dropoff_longitude','dropoff_latitude')
 dropoff_location_df.printSchema()
 dropoff_location_dyf = DynamicFrame.fromDF(dropoff_location_df,glueContext,"dropoff_location_dyf")
-writeToRedshift(dropoff_location_dyf,"DropOffLocationsDi_parq")
+writeToRedshift(dropoff_location_dyf,"DropOffLocationsDim")
 
 
 print("Date DF:")
 date_df = df.select(
     col('tpep_pickup_datetime').alias('datekey'))\
 .union(df.select('tpep_dropoff_datetime'))
+
+
+# print(df.select('tpep_pickup_datetime').count())
 
 date_df = date_df.select(
     'datekey',
@@ -179,7 +158,7 @@ date_df=date_df.distinct()
 date_df.printSchema()
 # date_df.show()
 date_dyf = DynamicFrame.fromDF(date_df,glueContext,"date_dyf")
-writeToRedshift(date_dyf,"DateDim_parq")
+writeToRedshift(date_dyf,"DateDim")
 
 
 rate_code_data = [
@@ -199,7 +178,7 @@ rate_code_schema = StructType([
 rate_code_df = spark.createDataFrame(rate_code_data,rate_code_schema)
 rate_code_df.printSchema()
 rate_code_dyf = DynamicFrame.fromDF(rate_code_df,glueContext,"rate_code_dyf")
-writeToRedshift(rate_code_dyf,"RateCodesDim_parq")
+writeToRedshift(rate_code_dyf,"RateCodesDim")
 
 vendor_data = [[1, "Creative Mobile Technologies"],[2,"VeriFone Inc."]]
 vendor_schema = StructType([
@@ -208,7 +187,17 @@ vendor_schema = StructType([
     ])
 vendor_df = spark.createDataFrame(vendor_data,vendor_schema)
 vendor_dyf = DynamicFrame.fromDF(vendor_df,glueContext,"vendor_dyf")
-writeToRedshift(vendor_dyf,"VendorsDim_parq")
+writeToRedshift(vendor_dyf,"VendorsDim")
+
+
+
 
 # ===============================================================
+
+
+
+# job.commit()
+
+
+
 job.commit()
